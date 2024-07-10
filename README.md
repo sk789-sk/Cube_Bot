@@ -1,1 +1,1 @@
-Repo for out cube bot
+Repo for the cube bot

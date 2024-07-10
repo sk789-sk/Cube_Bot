@@ -8,6 +8,11 @@ from sqlalchemy.ext.mutable import MutableList
 
 from config import db
 
+class Test(db.Model, SerializerMixin):
+    __tablename__ = 'Tests'
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String)
+    
 class User(db.Model, SerializerMixin):
     __tablename__ = 'Users'
 
@@ -73,8 +78,11 @@ class Match(db.Model, SerializerMixin):
     #Single Elimination Bracket parameters
 
     winner_next_match_id = db.Column(db.Integer, db.ForeignKey('Matches.id')) #This is the parent node for single elim brackets
-    # loser_next_match_id = db.Column(db.Integer, db.ForeignKey('Matches.id'))
-    parent = db.relationship('Match', remote_side=[id], backref='children')
+
+
+    loser_next_match_id = db.Column(db.Integer, db.ForeignKey('Matches.id'))
+    parent = db.relationship('Match', remote_side=[id], backref='children', foreign_keys=[winner_next_match_id])
+    
 
     #validations
     #serialization rules
@@ -93,7 +101,7 @@ class Entrant(db.Model, SerializerMixin):
     username = db.Column(db.String)
     discord_id = db.Column(db.BigInteger)
     point_total = db.Column(db.Integer)
-    opponents = db.Column(MutableList.as_mutable(db.ARRAY((db.Integer))))
+    opponents = db.Column(MutableList.as_mutable(db.ARRAY((db.Integer))), default =[])
     dropped = db.Column(db.Boolean, default=False) #I could store this as when 
     pair_up_down = db.Column(db.Boolean, default = 0)
     bye = db.Column(db.Integer, default=0)   #number of byes the player has received
