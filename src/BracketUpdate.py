@@ -47,6 +47,8 @@ def updateSwissMatch(winner_id,match_obj,round):
 
     return updated
 
+def updateDoubleElimMatch(winner_id,match_obj):
+    pass
 
 if __name__ == "__main__":
     with app.app_context():

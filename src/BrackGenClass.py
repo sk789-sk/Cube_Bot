@@ -2,10 +2,12 @@
 from models import Match, Entrant
 from collections import deque
 from config import app , db
+from pprint import pprint
 
 class TreeNode:
     #Represent each node as a match. Parent is the next match for the winner, child could be the next match for the loser?
-    def __init__(self,player_1=None,player_2=None, left=None,right=None,winner=None,parent=None, child=None):
+    def __init__(self,player_1=None,player_2=None, left=None,right=None,winner=None,parent=None, child=None,location=None):
+
         self.value = (player_1,player_2)
         
         self.left = left
@@ -15,28 +17,13 @@ class TreeNode:
         self.player_1 = player_1
         self.player_2 = player_2
         
+
         self.db_id = None
-        self.child = None
-    
+        self.child = child
+        self.parent = parent
+        self.location = location
     # def __repr__(self) -> str:
     #     return(f'{self.winner} has won, they will move to loser will move to {self.child}')
-    pass
-
-
-class LosersNode:
-    def __init__(self,player_1, player_2, left=None,right=None,winner=None,parent=None):
-        self.left = left #Winners side node is here
-        self.right = right #losers side node is here
-        self.value = (player_1,player_2)
-
-        self.winner = winner
-        self.player_1 = player_1
-        self.player_2 = player_2
-
-        self.db_id=None
-        self.child = None #Loser nodes have no next games
-
-
 
 def next_power_of_2(n):
     # If n is already a power of 2, return n
@@ -59,11 +46,15 @@ def build_single_elimination_bracket(player_list):
     #create initial matches
     for x,y in zip(*[iter(player_list)]*2): #this works from documentation as a trick 
         winner = x if y is None else y if x is None else None
-        match_leaf = TreeNode(player_1=x, player_2=y,winner=winner)
+        match_leaf = TreeNode(player_1=x, player_2=y,winner=winner, location='Winners')
         matches.append(match_leaf)
         init_matches.append(match_leaf)
     #create subsequent matches
     
+    for match in init_matches:
+        print(match.player_1.id, match.player_2.id)
+
+
     #If the  initial matches come in ordered this will work for 
     #loop through the matches, combine the first 2 into 1 and then push that to the end of the que. When the que has only 1 match left that would be the root node.
 
@@ -79,21 +70,23 @@ def build_single_elimination_bracket(player_list):
         if prev_2.winner !=None:
             p2_spot =prev_2.winner
 
-        new_match = TreeNode(player_1=p1_spot,player_2=p2_spot,left=prev_1, right= prev_2)
+        new_match = TreeNode(player_1=p1_spot,player_2=p2_spot,left=prev_1, right= prev_2, location='Winners')
         matches.append(new_match)
     return matches[0] #root node
 
 def build_loser_bracket(entrant_count):
-    #Assume that we have the first set of losers matches created when we create the initial winners side matches
-    #This will just create the bracket
+    #creates the matches/bracket
 
     iter = 0 
-    init_match_list = (entrant_count//4)*[TreeNode()]
+
+    init_match_list = [TreeNode(location='Losers') for _ in range(entrant_count//4)]
+
+    #init_match_list = (entrant_count//4)*[TreeNode(location='Losers')]
     
     while len(init_match_list) > 1:
         current_length = len(init_match_list)
         c = 0 
-        print(f'current iter {iter} has {current_length} matches')
+        #print(f'current iter {iter} has {current_length} matches')
         if iter%2 == 0: #new set is  winners dropdown + losers
             
             while c < current_length:
@@ -103,7 +96,8 @@ def build_loser_bracket(entrant_count):
                     left=prev_winners_side,
                     right=prev_losers_side,
                     player_1= None,
-                    player_2= None
+                    player_2= None,
+                    location= 'Losers'
                 )
 
                 init_match_list.append(new_match)
@@ -124,14 +118,29 @@ def build_loser_bracket(entrant_count):
                     p2_spot = prev_2.winner
 
                 new_loser_match = TreeNode(
-                    player_1=p1_spot, player_2=p2_spot, left=prev_1, right=prev_2
+                    player_1=p1_spot, player_2=p2_spot, left=prev_1, right=prev_2,
+                    location='Losers'
                 )
                 init_match_list.append(new_loser_match)
                 c+=2
             iter +=1
     
+    #Need to create node loser of losers final to play the winner of the last node created as well
+    temp = init_match_list.pop(0)
+    prev_winners_side = None
+    losers_GF = TreeNode(
+        left=prev_winners_side,
+        right=temp,
+        player_1= None,
+        player_2= None,
+        location='Losers'
+    )
+
     # print(f'final iter {iter} has {current_length} matches')
     # print(len(init_match_list))
+    
+
+    return losers_GF
     return init_match_list[0] #root node 
 
 def build_double_elim_bracket(participant_list):
@@ -146,9 +155,14 @@ def build_double_elim_bracket(participant_list):
     #Convert the tree into a DB.
     #Need to know the results of the winners and the losers as they go to the lower bracket, We would nee
 
+    for participant in participant_list:
+        print(participant.username)
 
     winners_final_node = build_single_elimination_bracket(participant_list)
+    #display_bracket_BFS(winners_final_node)
+
     losers_final_node = build_loser_bracket(len(participant_list))
+    #display_bracket_BFS(losers_final_node)
 
     print('winners')
 
@@ -157,26 +171,39 @@ def build_double_elim_bracket(participant_list):
     print(len(winners_traversal))
     print('Losers Bracket')
     
-    losers_grand_final_node = TreeNode(right=losers_final_node)
-    losers_traversal = return_losers_nodes_BFS(losers_grand_final_node)
-    print(len(losers_traversal))
+    #losers_grand_final_node = TreeNode(right=losers_final_node)
+    
+    losers_traversal = return_losers_nodes_BFS(losers_final_node)
+    print(len(losers_traversal)) #All the nodes in losers bracket that have a missing left or right
    
-    #Creating connections
+    #Creating connections by linking winners nodes to losers node by losers next match
 
+    connections = 0
     while winners_traversal:
         node = winners_traversal.pop(0)
         if node.child == None:
             node.child = losers_traversal[0]
-            if losers_traversal[0].left != None and losers_traversal[0].right != None:
+            #Proper tree we would have left and rights now but we already have it screwy in teh second part so lets just figure out what to do with the losers node
+
+            #Decide if we need to add more connections to the losers node or not
+
+            if losers_traversal[0].left or losers_traversal[0].right:
                 losers_traversal.pop(0)
-    
+            else:
+                connections += 1
+                if connections ==2:
+                    losers_traversal.pop(0)
+                    connections = 0
+            #losers_traversal[0].left = node
+    #Connections created were correct 
+
     print('connections complete')
     
     
     
-    grand_final_node = TreeNode(left = winners_final_node, right = losers_grand_final_node)
+    grand_final_node = TreeNode(left = winners_final_node, right = losers_final_node)
 
-    display_bracket_BFS(grand_final_node)
+    #display_bracket_BFS(grand_final_node)
 
     bracket_reset_node = TreeNode()
 
@@ -196,7 +223,7 @@ def display_bracket_BFS(root):
     queue = deque([root])
     while queue:
         node = queue.popleft()
-        print(f"depth: , Value: {node.value}")
+        print(f" node location: {node},  Value: {node.value}, child: {node.child}, left:{node.left}, right: {node.right}, location: {node.location}")
         if node.left:
             queue.append((node.left)) #depth +1
         if node.right:
@@ -222,8 +249,10 @@ def return_winners_nodes_BFS(root):
 
 def return_losers_nodes_BFS(root):
     #returns the losers nodes that are missing left and rights
+    
     if not root:
         return
+    
     queue = deque([root])
     unfinished_nodes = []
 
@@ -271,29 +300,122 @@ def tree2db(root,t_id,parent_id=None):
 
     return 
 
-def double_elim_tree2db(root,parent_id=None):
+def double_elim_tree2db(root,t_id,parent_id=None):
     #Would want to create the losers brackets matches
     #update the matches nodes so I have the info
     #then winners so we can reference the children on the winners side. Losers side is like a winners side in terms of only having a winners next match. 
+    #start with the losers finals node. 
+    #Add that to db flush so we have an id. Pass that id as the winners next node value. I would like to do this in a non-recursive manner since winners and losers have different requirements. Just follow same traversal we did earlier
 
     losers_node = root.right
     winners_final = root.left
 
-    if losers_node:
-        new_Match = Match(
+    #Add losers bracket to DB
+    #Start with the GF losers node and create the match and add it to db. Save the value as the parent node. 
+    #Push all the children to a stack so it we have [1] then [2,3]. 
+    #Then we take the first value and add the left and right child for that as well so we have [4,5,3] --> [8,9,5,3] #lets end on l4 so 15 matches only 
+    # 8 and 9 have no chilrdren nodes so then we have nothing to push to front and then [5,3]
+    #--> [10,11,3] 
+    #We also need to store the parent node to the child as well. 
 
-        )
+    stack = deque([losers_node])
+    i = 0
+    while stack:
+        current_match = stack.popleft()
+        #Create link for child to parent
+        
+        
+        # current_match.right.parent = current_match
+        # current_match.left.parent = current_match
+        
+        #Push the children nodes to front of the stack, go right first then left to keep order
+        if current_match.right:
+            stack.appendleft(current_match.right)
+            current_match.right.parent = current_match
 
-    pass
+        if current_match.left:
+            stack.appendleft(current_match.left)
+            current_match.left.parent = current_match
+        
+        #Create match for the node
+        try:
+            #pprint(vars(current_match))
+            #print('Parent info')
+            # if current_match.parent:
+            #     print(current_match.parent)
+
+            new_match = Match(
+                player_1_id = current_match.player_1.id if current_match.player_1 else None,
+                player_2_id = current_match.player_2.id if current_match.player_2 else None,
+                winner_next_match_id = current_match.parent.db_id if current_match.parent else None,
+                loser_next_match_id = None,
+                round = None,
+                tournament = t_id,
+                result = current_match.winner.id if current_match.winner else None
+            )
+
+            db.session.add(new_match)
+            db.session.flush()
+            current_match.db_id = new_match.id
+            i+=1
+        except Exception as e:
+            print("Error creating losers bracket matches, 0 matches added to db")
+            print(e)
+    print(f'{i} matches made in losers')
+    winners_stack = deque([winners_final])
+    
+    j=0
+    while winners_stack:
+        print(winners_stack)
+        current_match = winners_stack.popleft()
+
+        if current_match.right:
+            winners_stack.appendleft(current_match.right) 
+            current_match.right.parent = current_match
+
+        if current_match.left:
+            winners_stack.appendleft(current_match.left) #fkn typo did .right here also found error looking at the nodes memory addresses....
+            current_match.left.parent = current_match
+
+        try:
+            #pprint(vars(current_match))
+            print(f'Creating Match with the following \n parent {current_match.parent} \n child {current_match.child} \n left {current_match.left} \n right {current_match.right} \n values: {current_match.value}')
+
+            new_match = Match(
+                player_1_id = current_match.player_1.id if current_match.player_1 else None,
+                player_2_id = current_match.player_2.id if current_match.player_2 else None,
+                winner_next_match_id = current_match.parent.db_id if current_match.parent else None,
+                loser_next_match_id = current_match.child.db_id,
+                round = None,
+                tournament = t_id,
+                result = current_match.winner.id if current_match.winner else None
+            )
+            db.session.add(new_match)
+            db.session.flush()
+            current_match.db_id = new_match.id
+            j+=1
+        except Exception as e:
+            print("Error creating winners bracket, 0 matches added")
+            print(e)
+    print(f'{j} matches made in winners')
+
+    print('Matches created')
+    db.session.commit()
+    return
 
 if __name__ == "__main__":
-    match_list = [
-        TreeNode(player_1='E1', player_2='E2'), TreeNode(player_1='E3', player_2='E4'), TreeNode(player_1='E5', player_2='E6'), TreeNode(player_1='E7', player_2='E8')
-    ]
+
+    with app.app_context():
+        participation_list = Entrant.query.filter(Entrant.tournament_id==3).all()
+        print(participation_list)
+        print(len(participation_list))
 
 
-    # loser_root = build_loser_bracket(match_list)
-    # display_bracket_BFS(loser_root)
+        #GF = build_double_elim_bracket(['E1','E2','E3','E4','E5','E6','E7','E8']) 
+        GF = build_double_elim_bracket(participation_list)   
 
-    GF = build_double_elim_bracket(['E1','E2','E3','E4','E5','E6','E7','E8','E9','E10','E11','E12','E13','E14','E15','E16'])
+        display_bracket_BFS(GF) 
+
+        double_elim_tree2db(GF,3)
+
     pass
